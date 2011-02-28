@@ -14,16 +14,23 @@ namespace taskmon {
 	friend class TaskBase;
     protected:
 
+        struct Watch
+        {
+            std::string name;
+            nl_msg* request_msg;
+        };
+        typedef std::map<boost::int32_t, Watch> TaskWatches;
+        TaskWatches watches;
+
+
         /* Handler for the watch operation
          */
-        virtual void watch(boost::int32_t pid);
-        virtual void removeWatch(boost::int32_t pid);
+        virtual void watch(std::string const& name, boost::int32_t pid);
+        virtual void removeWatchFromName(std::string const& name);
+        virtual void removeWatchFromPID(boost::int32_t pid);
 
         nl_sock* netlink_socket;
         int netlink_family;
-
-        typedef std::map<boost::int32_t, nl_msg*> TaskWatches;
-        TaskWatches watches;
 
         void receive(nl_msg* msg);
         static int receiveCallback(struct nl_msg *msg, void *arg);

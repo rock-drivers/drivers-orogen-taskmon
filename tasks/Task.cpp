@@ -14,7 +14,7 @@ Task::Task(std::string const& name, TaskCore::TaskState initial_state)
 }
 
 
-void Task::watch(boost::int32_t pid)
+void Task::watch(std::string const& name, boost::int32_t pid)
 {
     nl_msg *msg = 0;
     if (netlink_socket)
@@ -25,15 +25,30 @@ void Task::watch(boost::int32_t pid)
         nla_put_u32(msg, TASKSTATS_CMD_ATTR_PID, pid);
     }
 
-    watches.insert(make_pair(pid, msg));
+    Watch watch;
+    watch.name = name;
+    watch.request_msg = msg;
+    watches.insert(make_pair(pid, watch));
 }
 
-void Task::removeWatch(boost::int32_t pid)
+void Task::removeWatchFromName(std::string const& name)
+{
+    for (TaskWatches::iterator it = watches.begin(); it != watches.end(); ++it)
+    {
+        if (it->second.name == name)
+        {
+            nlmsg_free(it->second.request_msg);
+            watches.erase(it);
+        }
+    }
+}
+
+void Task::removeWatchFromPID(boost::int32_t pid)
 {
     TaskWatches::iterator it = watches.find(pid);
     if (it != watches.end())
     {
-        nlmsg_free(it->second);
+        nlmsg_free(it->second.request_msg);
         watches.erase(it);
     }
 }
@@ -61,6 +76,11 @@ void Task::receive(nl_msg* msg)
 
             TaskStats result;
             result.time = base::Time::now();
+            TaskWatches::const_iterator it =
+                watches.find(stats->ac_pid);
+            if (it != watches.end())
+                result.name = it->second.name;
+
             result.stats = *stats;
 
             _stats.write(result);
@@ -114,9 +134,9 @@ bool Task::startHook()
     this->watches.clear();
     for (TaskWatches::iterator it = watches.begin(); it != watches.end(); ++it)
     {
-        if (it->second) watches.insert(*it);
+        if (it->second.request_msg) watches.insert(*it);
         else
-            watch(it->first);
+            watch(it->second.name, it->first);
     }
 
     return true;
@@ -126,7 +146,7 @@ void Task::sendRequests()
 {
     for (TaskWatches::const_iterator it = watches.begin(); it != watches.end(); ++it)
     {
-        nl_msg* msg = it->second;
+        nl_msg* msg = it->second.request_msg;
         nlmsg_hdr(msg)->nlmsg_seq = nl_socket_use_seq(netlink_socket);
         nl_send_auto_complete(netlink_socket, msg);
     }
@@ -164,8 +184,8 @@ void Task::stopHook()
 
     for (TaskWatches::iterator it = watches.begin(); it != watches.end(); ++it)
     {
-        nlmsg_free(it->second);
-        it->second = 0;
+        nlmsg_free(it->second.request_msg);
+        it->second.request_msg = 0;
     }
 
     TaskBase::stopHook();

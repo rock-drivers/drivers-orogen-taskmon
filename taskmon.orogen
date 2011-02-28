@@ -7,8 +7,14 @@ import_types_from "taskmonTypes.hpp"
 task_context "Task" do
    output_port "stats", "taskmon::TaskStats"
 
-   operation('watch').argument('pid', 'int')
-   operation('removeWatch').argument('pid', 'int')
+   operation('watch').
+       argument('name', 'std::string').
+       argument('pid', 'int')
+
+   operation('removeWatchFromName').
+       argument('name', 'std::string')
+   operation('removeWatchFromPID').
+       argument('pid', 'int')
 end
 
 
