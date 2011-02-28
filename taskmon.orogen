@@ -1,0 +1,24 @@
+name "taskmon"
+
+using_library "libnl-2.0"
+import_types_from "base"
+import_types_from "taskmonTypes.hpp"
+
+task_context "Task" do
+   output_port "stats", "taskmon::TaskStats"
+
+   operation('watch').argument('pid', 'int')
+   operation('removeWatch').argument('pid', 'int')
+end
+
+
+# Declares a deployment, i.e. an actual executable that contains various tasks.
+deployment "taskmon_test" do
+    # This is a test deployment that should not be installed
+    do_not_install
+
+    # Declares it as periodic, with a period of 100ms
+    task("taskmon", "Task").
+        periodic(0.1)
+end
+

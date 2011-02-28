@@ -1,0 +1,8 @@
+<package>
+  <description brief="task that outputs monitoring information about running tasks">
+    This task outputs monitoring information (CPU load, I/O load, ...) about the
+    threads running on this system
+  </description>
+  <author>Sylvain Joyeux/sylvain.joyeux@dfki.de</author>
+  <depend package="libnl2" />
+</package>
