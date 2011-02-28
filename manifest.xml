@@ -4,5 +4,6 @@
     threads running on this system
   </description>
   <author>Sylvain Joyeux/sylvain.joyeux@dfki.de</author>
+  <depend package="orogen" />
   <depend package="libnl2" />
 </package>
