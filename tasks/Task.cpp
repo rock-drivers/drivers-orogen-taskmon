@@ -80,9 +80,7 @@ void Task::receive(nl_msg* msg)
                 watches.find(stats->ac_pid);
             if (it != watches.end())
                 result.name = it->second.name;
-
             result.stats = *stats;
-
             _stats.write(result);
         }
     }
@@ -121,7 +119,6 @@ bool Task::startHook()
     if (0 != err)
         return false;
 
-    nl_socket_set_nonblocking(netlink_socket);
     nl_socket_disable_auto_ack(netlink_socket);
     nl_socket_disable_seq_check(netlink_socket);
 
@@ -142,30 +139,18 @@ bool Task::startHook()
     return true;
 }
 
-void Task::sendRequests()
+void Task::updateHook()
 {
+    TaskBase::updateHook();
+    
     for (TaskWatches::const_iterator it = watches.begin(); it != watches.end(); ++it)
     {
         nl_msg* msg = it->second.request_msg;
         nlmsg_hdr(msg)->nlmsg_seq = nl_socket_use_seq(netlink_socket);
         nl_send_auto_complete(netlink_socket, msg);
-    }
-}
 
-void Task::updateHook()
-{
-    TaskBase::updateHook();
-    
-    if (watches.empty())
-        return;
-
-    sendRequests();
-    while(true)
-    {
         int ret = nl_recvmsgs_default(netlink_socket);
-        if (ret == 0)
-            break;
-        else if (ret <= 0)
+        if (ret < 0)
         {
             if (ret != -NLE_FAILURE) // this is received when a PID is invalid, ignore
                 throw std::runtime_error(std::string("cannot read stats: ") + nl_geterror(ret));

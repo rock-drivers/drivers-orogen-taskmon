@@ -34,7 +34,6 @@ namespace taskmon {
 
         void receive(nl_msg* msg);
         static int receiveCallback(struct nl_msg *msg, void *arg);
-        void sendRequests();
 
     public:
         Task(std::string const& name = "taskmon::Task", TaskCore::TaskState initial_state = Stopped);
