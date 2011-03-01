@@ -134,7 +134,7 @@ bool Task::startHook()
     this->watches.clear();
     for (TaskWatches::iterator it = watches.begin(); it != watches.end(); ++it)
     {
-        if (it->second.request_msg) watches.insert(*it);
+        if (it->second.request_msg) this->watches.insert(*it);
         else
             watch(it->second.name, it->first);
     }
