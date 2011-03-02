@@ -45,6 +45,7 @@ void Task::removeWatchFromName(std::string const& name)
     {
         if (it->second.name == name)
         {
+            std::cout << "removing watch " << it->second.name << std::endl;
             nlmsg_free(it->second.request_msg);
             watches.erase(it);
         }
@@ -57,6 +58,7 @@ void Task::removeWatchFromPID(boost::int32_t pid)
     if (it != watches.end())
     {
         nlmsg_free(it->second.request_msg);
+        std::cout << "removing watch " << it->second.name << std::endl;
         watches.erase(it);
     }
 }
