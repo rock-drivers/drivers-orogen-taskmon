@@ -5,7 +5,8 @@ import_types_from "base"
 import_types_from "taskmonTypes.hpp"
 
 task_context "Task" do
-   output_port "stats", "taskmon::TaskStats"
+   output_port("stats", "taskmon::TaskStats").
+       burst(200, 0)
 
    operation('watch').
        argument('name', 'std::string').
