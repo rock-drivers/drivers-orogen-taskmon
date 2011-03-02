@@ -16,6 +16,14 @@ Task::Task(std::string const& name, TaskCore::TaskState initial_state)
 
 void Task::watch(std::string const& name, boost::int32_t pid)
 {
+    TaskWatches::iterator watch_it = watches.find(pid);
+    if (watch_it != watches.end())
+    {
+        std::cout << "renaming " << watch_it->second.name << " to " << name << std::endl;
+        watch_it->second.name = name;
+        return;
+    }
+
     nl_msg *msg = 0;
     if (netlink_socket)
     {
