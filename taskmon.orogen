@@ -1,31 +1,22 @@
 name "taskmon"
 
-using_library "libnl-2.0"
 import_types_from "base"
 import_types_from "taskmonTypes.hpp"
 
 task_context "Task" do
-   output_port("stats", "taskmon::TaskStats").
-       burst(200, 0)
+   output_port("stats", "taskmon::TaskStats")
 
    operation('watch').
        argument('name', 'std::string').
        argument('pid', 'int')
 
+   property('watch_all', 'bool', true).
+       doc "if set to true, will report information about all processes, using watch() only to give them names"
+
    operation('removeWatchFromName').
        argument('name', 'std::string')
    operation('removeWatchFromPID').
        argument('pid', 'int')
+
+   periodic 1
 end
-
-
-# Declares a deployment, i.e. an actual executable that contains various tasks.
-deployment "taskmon_test" do
-    # This is a test deployment that should not be installed
-    do_not_install
-
-    # Declares it as periodic, with a period of 100ms
-    task("taskmon", "Task").
-        periodic(0.1)
-end
-

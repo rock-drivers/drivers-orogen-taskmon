@@ -1,15 +1,13 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.cpp */
 
 #include "Task.hpp"
-#include <linux/taskstats.h>
-#include <netlink/genl/genl.h>
-#include <netlink/genl/ctrl.h>
+#include <proc/readproc.h>
 
 using namespace taskmon;
 
 Task::Task(std::string const& name, TaskCore::TaskState initial_state)
     : TaskBase(name, initial_state)
-    , netlink_socket(NULL)
+    , proctab(NULL)
 {
 }
 
@@ -24,18 +22,9 @@ void Task::watch(std::string const& name, boost::int32_t pid)
         return;
     }
 
-    nl_msg *msg = 0;
-    if (netlink_socket)
-    {
-        msg = nlmsg_alloc();
-        genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, netlink_family, 0, 
-                NLM_F_REQUEST, TASKSTATS_CMD_GET, TASKSTATS_GENL_VERSION);
-        nla_put_u32(msg, TASKSTATS_CMD_ATTR_PID, pid);
-    }
-
     Watch watch;
     watch.name = name;
-    watch.request_msg = msg;
+    watch.pid = pid;
     watches.insert(make_pair(pid, watch));
 }
 
@@ -46,7 +35,6 @@ void Task::removeWatchFromName(std::string const& name)
         if (it->second.name == name)
         {
             std::cout << "removing watch " << it->second.name << std::endl;
-            nlmsg_free(it->second.request_msg);
             watches.erase(it);
         }
     }
@@ -57,51 +45,10 @@ void Task::removeWatchFromPID(boost::int32_t pid)
     TaskWatches::iterator it = watches.find(pid);
     if (it != watches.end())
     {
-        nlmsg_free(it->second.request_msg);
         std::cout << "removing watch " << it->second.name << std::endl;
         watches.erase(it);
     }
 }
-
-void Task::receive(nl_msg* msg)
-{
-    struct nlmsghdr *nlh = nlmsg_hdr(msg);
-    struct nlattr *main[__TASKSTATS_TYPE_MAX+1];
-    struct nlattr *actual[__TASKSTATS_TYPE_MAX+1];
-
-    // Validate message and parse attributes
-    int err = genlmsg_parse(nlh, 0, main, __TASKSTATS_TYPE_MAX, NULL);
-    if (err != 0)
-        throw std::runtime_error(std::string("invalid message received: ") + nl_geterror(err));
-
-    if (main[TASKSTATS_TYPE_AGGR_PID]) {
-        int err = nla_parse_nested(actual, __TASKSTATS_TYPE_MAX, main[TASKSTATS_TYPE_AGGR_PID], NULL);
-        if (err != 0)
-            throw std::runtime_error(std::string("invalid message received: ") + nl_geterror(err));
-
-        if (actual[TASKSTATS_TYPE_STATS])
-        {
-            void* data = nla_data(actual[TASKSTATS_TYPE_STATS]);
-            taskstats* stats = reinterpret_cast<taskstats*>(data);
-
-            TaskStats result;
-            result.time = base::Time::now();
-            TaskWatches::const_iterator it =
-                watches.find(stats->ac_pid);
-            if (it != watches.end())
-                result.name = it->second.name;
-            result.stats = *stats;
-            _stats.write(result);
-        }
-    }
-}
-
-int Task::receiveCallback(struct nl_msg *msg, void *arg)
-{
-    static_cast<Task*>(arg)->receive(msg);
-    return NL_OK;
-} 
-
 
 /// The following lines are template definitions for the various state machine
 // hooks defined by Orocos::RTT. See Task.hpp for more detailed
@@ -119,53 +66,97 @@ bool Task::startHook()
     if (! TaskBase::startHook())
         return false;
 
-    netlink_socket = nl_socket_alloc();
-    if (!netlink_socket)
-        return false;
-
-    genl_connect(netlink_socket);
-
-    int err = nl_socket_modify_cb(netlink_socket, NL_CB_VALID, NL_CB_CUSTOM, &receiveCallback, this);
-    if (0 != err)
-        return false;
-
-    nl_socket_disable_auto_ack(netlink_socket);
-    nl_socket_disable_seq_check(netlink_socket);
-
-    netlink_family = genl_ctrl_resolve(netlink_socket, TASKSTATS_GENL_NAME);
-    if (netlink_family < 0)
-        return false;
-
-    // Create the messages for all pending watches
-    TaskWatches watches = this->watches;
-    this->watches.clear();
-    for (TaskWatches::iterator it = watches.begin(); it != watches.end(); ++it)
-    {
-        if (it->second.request_msg) this->watches.insert(*it);
-        else
-            watch(it->second.name, it->first);
-    }
-
+    sysClockPeriodInMuS = 1e6 / static_cast<double>(sysconf(_SC_CLK_TCK));
     return true;
+}
+
+void Task::processProcInfo(bool watch_all, TaskStats& stats, proc_t const& proc_info)
+{
+    TaskWatches::const_iterator watch_it = watches.find(proc_info.tid);
+    if (!watch_all && watch_it == watches.end())
+	return;
+
+    stats.tasks.resize(stats.tasks.size() + 1);
+    TaskInfo& task_info(stats.tasks.back());
+
+    if (watch_it != watches.end())
+	task_info.name = watch_it->second.name;
+
+    task_info.tid = proc_info.tid;
+    task_info.ppid = proc_info.ppid;
+    task_info.state = proc_info.state;
+
+    task_info.utime  = base::Time::fromMicroseconds(sysClockPeriodInMuS * proc_info.utime);
+    task_info.stime  = base::Time::fromMicroseconds(sysClockPeriodInMuS * proc_info.stime);
+    task_info.cutime = base::Time::fromMicroseconds(sysClockPeriodInMuS * proc_info.cutime);
+    task_info.cstime = base::Time::fromMicroseconds(sysClockPeriodInMuS * proc_info.cstime);
+    task_info.start_time = base::Time::fromMicroseconds(sysClockPeriodInMuS * proc_info.start_time);
+    task_info.priority = proc_info.priority;
+    task_info.nice = proc_info.nice;
+    task_info.rss = proc_info.rss;
+    task_info.size = proc_info.size;
+    task_info.resident = proc_info.resident;
+    task_info.share = proc_info.share;
+    task_info.trs = proc_info.trs;
+    task_info.lrs = proc_info.lrs;
+    task_info.drs = proc_info.drs;
+    task_info.dt = proc_info.dt;
+    task_info.vm_size = proc_info.vm_size;
+    task_info.vm_lock = proc_info.vm_lock;
+    task_info.vm_rss = proc_info.vm_rss;
+    task_info.vm_data = proc_info.vm_data;
+    task_info.vm_stack = proc_info.vm_stack;
+    task_info.vm_exe = proc_info.vm_exe;
+    task_info.vm_lib = proc_info.vm_lib;
+    task_info.rtprio = proc_info.rtprio;
+    task_info.sched = proc_info.sched;
+    task_info.vsize = proc_info.vsize;
+    task_info.min_flt = proc_info.min_flt;
+    task_info.maj_flt = proc_info.maj_flt;
+    task_info.cmin_flt = proc_info.cmin_flt;
+    task_info.cmaj_flt = proc_info.cmaj_flt;
+    task_info.pgrp = proc_info.pgrp;
+    task_info.session = proc_info.session;
+    task_info.nlwp = proc_info.nlwp;
+    task_info.tgid = proc_info.tgid;
+    task_info.tpgid = proc_info.tpgid;
+    task_info.processor = proc_info.processor;
+
+    char** cmdline_element = proc_info.cmdline;
+    if (cmdline_element)
+    {
+	while (*cmdline_element)
+	{
+	    task_info.cmdline.push_back(std::string(*cmdline_element));
+	    ++cmdline_element;
+	}
+    }
 }
 
 void Task::updateHook()
 {
     TaskBase::updateHook();
-    
-    for (TaskWatches::const_iterator it = watches.begin(); it != watches.end(); ++it)
-    {
-        nl_msg* msg = it->second.request_msg;
-        nlmsg_hdr(msg)->nlmsg_seq = nl_socket_use_seq(netlink_socket);
-        nl_send_auto_complete(netlink_socket, msg);
 
-        int ret = nl_recvmsgs_default(netlink_socket);
-        if (ret < 0)
-        {
-            if (ret != -NLE_FAILURE) // this is received when a PID is invalid, ignore
-                throw std::runtime_error(std::string("cannot read stats: ") + nl_geterror(ret));
-        }
+    bool watch_all = _watch_all.get();
+
+    TaskStats stats;
+    stats.time = base::Time::now();
+    
+    proctab = openproc(PROC_FILLMEM | PROC_FILLCOM | PROC_FILLSTAT | PROC_FILLSTATUS);
+    proc_t proc_info;
+    memset(&proc_info, 0, sizeof(proc_info));
+    proc_t task_info;
+    memset(&task_info, 0, sizeof(task_info));
+    while (readproc(proctab, &proc_info) != NULL)
+    {
+	processProcInfo(watch_all, stats, proc_info);
+	while(readtask(proctab, &proc_info, &task_info) != NULL)
+	    processProcInfo(watch_all, stats, task_info);
     }
+    stats.end_time = base::Time::now();
+    closeproc(proctab);
+    
+    _stats.write(stats);
 }
 
 // void Task::errorHook()
@@ -174,15 +165,6 @@ void Task::updateHook()
 // }
 void Task::stopHook()
 {
-    nl_socket_free(netlink_socket);
-    netlink_socket = 0;
-
-    for (TaskWatches::iterator it = watches.begin(); it != watches.end(); ++it)
-    {
-        nlmsg_free(it->second.request_msg);
-        it->second.request_msg = 0;
-    }
-
     TaskBase::stopHook();
 }
 // void Task::cleanupHook()

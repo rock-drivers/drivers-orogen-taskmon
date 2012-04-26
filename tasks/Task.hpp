@@ -5,8 +5,8 @@
 
 #include "taskmon/TaskBase.hpp"
 
-struct nl_sock;
-struct nl_msg;
+struct PROCTAB;
+struct proc_t;
 
 namespace taskmon {
     class Task : public TaskBase
@@ -17,11 +17,14 @@ namespace taskmon {
         struct Watch
         {
             std::string name;
-            nl_msg* request_msg;
+            int pid;
         };
         typedef std::map<boost::int32_t, Watch> TaskWatches;
         TaskWatches watches;
 
+	PROCTAB* proctab;
+
+	double sysClockPeriodInMuS;
 
         /* Handler for the watch operation
          */
@@ -29,11 +32,7 @@ namespace taskmon {
         virtual void removeWatchFromName(std::string const& name);
         virtual void removeWatchFromPID(boost::int32_t pid);
 
-        nl_sock* netlink_socket;
-        int netlink_family;
-
-        void receive(nl_msg* msg);
-        static int receiveCallback(struct nl_msg *msg, void *arg);
+	void processProcInfo(bool watch_all, TaskStats& stats, proc_t const& proc_info);
 
     public:
         Task(std::string const& name = "taskmon::Task", TaskCore::TaskState initial_state = Stopped);

@@ -6,5 +6,5 @@
   <author>Sylvain Joyeux/sylvain.joyeux@dfki.de</author>
   <depend package="orogen" />
   <depend package="base/orogen/types" />
-  <depend package="libnl2" />
+  <depend package="libproc" />
 </package>
