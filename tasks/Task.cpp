@@ -25,7 +25,7 @@ void Task::watch(std::string const& name, boost::int32_t pid)
     Watch watch;
     watch.name = name;
     watch.pid = pid;
-    watches.insert(make_pair(pid, watch));
+    watches.insert(std::make_pair(pid, watch));
 }
 
 void Task::removeWatchFromName(std::string const& name)
