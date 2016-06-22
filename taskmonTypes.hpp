@@ -1,7 +1,7 @@
 #ifndef TASKMON_TYPES_HPP
 #define TASKMON_TYPES_HPP
 
-#include <base/time.h>
+#include <base/Time.hpp>
 #include <vector>
 
 namespace taskmon
